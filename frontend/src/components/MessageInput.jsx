@@ -1,109 +1,133 @@
 import { useRef, useState } from "react";
-import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { useChatStore } from "../store/useChatStore";
 
-const MessageInput = () => {
+export default function MessageInput() {
+  const fileRef = useRef(null);
   const [text, setText] = useState("");
-  const [imagePreview, setImagePreview] = useState(null);
-  const fileInputRef = useRef(null);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
   const { sendMessage } = useChatStore();
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
-      return;
+  /* ---------- client‑side validation & preview ---------- */
+  const onSelectFile = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+
+    if (!f.type.startsWith("image/")) {
+      toast.error("Only images allowed"); return;
     }
-
+    if (f.size > 5 * 1024 * 1024) {       // 5 MB gate
+      toast.error("Max 5 MB"); return;
+    }
+    setFile(f);
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result);
-    };
-    reader.readAsDataURL(file);
+    reader.onloadend = () => setPreview(reader.result);
+    reader.readAsDataURL(f);
   };
 
-  const removeImage = () => {
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  const resetImage = () => {
+    setFile(null); setPreview(null);
+    fileRef.current && (fileRef.current.value = "");
   };
 
-  const handleSendMessage = async (e) => {
+  /* ------------- main send handler ------------- */
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!text.trim() && !imagePreview) return;
+    if (!text.trim() && !file) return;
 
     try {
-      await sendMessage({
-        text: text.trim(),
-        image: imagePreview,
-      });
+      let imageUrl = null;
 
-      // Clear form
-      setText("");
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (error) {
-      console.error("Failed to send message:", error);
+      if (file) {
+        const sigRes = await fetch("/api/cloudinary/sign");
+        if (!sigRes.ok) throw new Error("Could not get signature");
+        const {
+          signature,
+          timestamp,
+          apiKey,
+          cloudName,
+          uploadPreset,
+          folder,
+        } = await sigRes.json();
+
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("api_key", apiKey);
+        fd.append("timestamp", timestamp);
+        fd.append("signature", signature);
+        fd.append("folder", folder);
+        fd.append("upload_preset", uploadPreset);
+
+        const upRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+          { method: "POST", body: fd }
+        );
+        if (!upRes.ok) throw new Error("Upload failed");
+        const upData = await upRes.json();
+        imageUrl = upData.secure_url;
+      }
+
+      await sendMessage({ text: text.trim(), image: imageUrl });
+
+      setText(""); resetImage();
+    } catch (err) {
+      console.error(err);
+      toast.error("Send failed");
     }
   };
 
   return (
     <div className="p-4 w-full">
-      {imagePreview && (
+      {preview && (
         <div className="mb-3 flex items-center gap-2">
           <div className="relative">
-            <img
-              src={imagePreview}
-              alt="Preview"
-              className="w-20 h-20 object-cover rounded-lg border border-zinc-700"
-            />
-            <button
-              onClick={removeImage}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300
-              flex items-center justify-center"
-              type="button"
-            >
+            <img src={preview} alt="preview"
+                 className="w-20 h-20 object-cover rounded-lg border border-base-300" />
+            <button type="button" onClick={resetImage}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300 grid place-content-center">
               <X className="size-3" />
             </button>
           </div>
         </div>
       )}
 
-      <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <div className="flex-1 flex gap-2">
           <input
             type="text"
-            className="w-full input input-bordered rounded-lg input-sm sm:input-md"
-            placeholder="Type a message..."
+            placeholder="Type a message…"
             value={text}
             onChange={(e) => setText(e.target.value)}
+            className="w-full input input-bordered rounded-lg input-sm sm:input-md"
           />
+
+          {/* hidden file input */}
           <input
             type="file"
             accept="image/*"
+            ref={fileRef}
+            onChange={onSelectFile}
             className="hidden"
-            ref={fileInputRef}
-            onChange={handleImageChange}
           />
 
-          <button
-            type="button"
-            className={`hidden sm:flex btn btn-circle
-                     ${imagePreview ? "text-emerald-500" : "text-zinc-400"}`}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Image size={20} />
+          {/* open picker */}
+          <button type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className={`hidden sm:flex btn btn-circle ${
+                    preview ? "text-emerald-500" : "text-zinc-400"
+                  }`}>
+            <Image size={20}/>
           </button>
         </div>
-        <button
-          type="submit"
-          className="btn btn-sm btn-circle"
-          disabled={!text.trim() && !imagePreview}
-        >
-          <Send size={22} />
+
+        <button type="submit"
+                disabled={!text.trim() && !file}
+                className="btn btn-sm btn-circle">
+          <Send size={22}/>
         </button>
       </form>
     </div>
   );
-};
-export default MessageInput;
+}

@@ -7,6 +7,8 @@ import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import { app, server } from "./lib/socket.js";
+import cloudinaryRoute from "./routes/cloudinary.route.js";
+
 
 dotenv.config();
 
@@ -21,6 +23,7 @@ app.use(
     credentials: true,
   })
 );
+app.use("/api/cloudinary", cloudinaryRoute);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);

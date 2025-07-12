@@ -1,9 +1,20 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { LogOut, MessageSquare, Settings, User } from "lucide-react";
 
 const Navbar = () => {
   const { logout, authUser } = useAuthStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+
+  const handleSettingsClick = () => {
+  if (location.pathname === "/settings") {
+    navigate(-1); // go back
+  } else {
+    navigate("/settings"); // go to settings
+  }
+};
 
   return (
     <header
@@ -22,8 +33,8 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              to={"/settings"}
+            <button
+              onClick={handleSettingsClick}
               className={`
               btn btn-sm gap-2 transition-colors
               
@@ -31,7 +42,7 @@ const Navbar = () => {
             >
               <Settings className="w-4 h-4" />
               <span className="hidden sm:inline">Settings</span>
-            </Link>
+            </button>
 
             {authUser && (
               <>
